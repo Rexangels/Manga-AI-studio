@@ -1,7 +1,10 @@
 from django.db import models
+from django.contrib.auth.models import User
+import datetime
+import json
+import uuid
 
 # Create your models here.
-# manga/models.py
 class UserProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     subscription_tier = models.CharField(
@@ -16,27 +19,66 @@ class UserProfile(models.Model):
     )
     pages_created = models.IntegerField(default=0)
     pages_quota = models.IntegerField(default=5)  # Default for free tier
-    quota_reset_date = models.DateField()
+    quota_reset_date = models.DateField(default=datetime.date.today)
     
     @property
     def remaining_pages(self):
         return max(0, self.pages_quota - self.pages_created)
-
-# Services to manage usage tracking
-class QuotaService:
-    @staticmethod
-    def check_user_quota(user_profile):
-        # Reset quota if we're past the reset date
-        today = datetime.date.today()
-        if today > user_profile.quota_reset_date:
-            user_profile.pages_created = 0
-            user_profile.quota_reset_date = today + datetime.timedelta(days=30)
-            user_profile.save()
-            
-        # Check if user has remaining quota
-        return user_profile.remaining_pages > 0
     
-    @staticmethod
-    def increment_usage(user_profile):
-        user_profile.pages_created += 1
-        user_profile.save()
+    def __str__(self):
+        return f"{self.user.username}'s Profile ({self.subscription_tier})"
+
+
+class Template(models.Model):
+    """Manga page layout template"""
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
+    description = models.TextField()
+    layout_json = models.TextField()  # JSON representation of layout
+    preview_image = models.ImageField(upload_to='templates/', null=True, blank=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    is_public = models.BooleanField(default=True)
+    min_panels = models.IntegerField(default=1)
+    max_panels = models.IntegerField(default=12)
+    
+    def __str__(self):
+        return self.name
+    
+    @property
+    def layout(self):
+        """Return the layout as a Python object"""
+        return json.loads(self.layout_json)
+
+
+class AIModel(models.Model):
+    """AI model configuration"""
+    name = models.CharField(max_length=100)
+    identifier = models.CharField(max_length=100, unique=True)
+    description = models.TextField()
+    llm_provider = models.CharField(max_length=50)
+    image_provider = models.CharField(max_length=50)
+    tier_required = models.CharField(
+        max_length=20,
+        choices=[
+            ('FREE', 'Free'),
+            ('BASIC', 'Basic'),
+            ('PRO', 'Pro'),
+            ('ENTERPRISE', 'Enterprise')
+        ],
+        default='FREE'
+    )
+    is_active = models.BooleanField(default=True)
+    configuration = models.JSONField(default=dict)  # Provider-specific settings
+    
+    def __str__(self):
+        return f"{self.name} ({self.tier_required})"
+
+
+class MangaProject(models.Model):
+    """A manga project, containing a set of panels"""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    title = models.CharField(max_length=200)
+    narrative = models.TextField()
+    template = models.ForeignKey(Template, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
