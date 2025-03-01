@@ -1,0 +1,60 @@
+# kubernetes/rendering-service.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manga-rendering-service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: manga-rendering-service
+  template:
+    metadata:
+      labels:
+        app: manga-rendering-service
+    spec:
+      containers:
+      - name: manga-rendering-service
+        image: manga-ai/rendering-service:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          limits:
+            cpu: "1"
+            memory: "2Gi"
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: manga-ai-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: manga-ai-secrets
+              key: redis-url
+        - name: OPENAI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: manga-ai-secrets
+              key: openai-api-key
+        - name: STABILITY_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: manga-ai-secrets
+              key: stability-api-key
+        livenessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health/
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 5
